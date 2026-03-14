@@ -1,0 +1,11 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: acom_frontend
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "5173:5173"

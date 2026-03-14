@@ -1,0 +1,5 @@
+uvicorn integrador_de_chats.asgi:application --reload
+
+celery -A integrador_de_chats worker -l info -P solo
+
+celery -A integrador_de_chats beat -l info

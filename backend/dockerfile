@@ -1,0 +1,51 @@
+# Dockerfile
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_NO_INTERACTION=1 \
+    PIP_NO_CACHE_DIR=off
+
+WORKDIR /app
+
+# system deps required for psycopg2 and building some packages
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      build-essential \
+      gcc \
+      libpq-dev \
+      curl \
+      ca-certificates \
+      && rm -rf /var/lib/apt/lists/*
+
+# copy poetry files first for caching layer
+COPY pyproject.toml poetry.lock* /app/
+
+# install poetry and project dependencies (no dev)
+RUN pip install --upgrade pip setuptools wheel \
+ && pip install "poetry==2.1.4" \
+ && poetry config virtualenvs.create false \
+ && poetry install --without dev --no-interaction --no-ansi
+
+# copy application code
+COPY . /app
+
+# copy entrypoint and normalize line endings for Linux containers
+COPY ./entrypoint.sh /app/entrypoint.sh
+RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+
+# create non-root user and switch
+RUN addgroup --system app && adduser --system --ingroup app app \
+ && chown -R app:app /app
+USER app
+
+ENV PORT=8000
+
+# the entrypoint will run migrations/collectstatic then exec this
+CMD ["gunicorn", "integrador_de_chats.asgi:application", \
+     "-k", "uvicorn.workers.UvicornWorker", \
+     "--bind", "0.0.0.0:8000", \
+     "--workers", "4", \
+     "--access-logfile", "-", \
+     "--error-logfile", "-"]
