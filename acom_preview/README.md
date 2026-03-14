@@ -1,44 +1,65 @@
-# ACOM Example Chat Frontend
+# Frontend - ACOM Preview
 
-Interface em formato de chat para o backend orquestrador. A aplicação exibe sessões na barra lateral e permite responder mensagens em um único ponto, com roteamento para a integração correta.
+Aplicacao React para atendimento em formato de chat, consumindo os endpoints do `message_manager` no backend.
 
-## Funcionalidades principais
+## Responsabilidades
 
-- Campo superior para id do usuário da plataforma
-- Barra lateral com chats abertos (canal + id do usuário no canal + sessão)
-- Painel de conversa com bolhas no estilo mensageria
-- Identificação colaborativa de remetente: `ds_id_platform_user` não nulo representa mensagem da plataforma
-- Atualização periódica por polling
+- Listar sessoes de conversa em tempo real por polling
+- Exibir historico de mensagens da sessao selecionada
+- Enviar respostas para o backend
+- Exibir estados de envio otimista e metricas basicas de latencia
 
-## Endpoints utilizados
+## Stack Tecnica
 
-- GET /manager/sessions/
-- GET /manager/messages/
-- POST /manager/messages/
+- React 19
+- TypeScript
+- Vite
+- Tailwind CSS 4
+- Base UI
+- Lucide React
+
+## Estrutura Relevante
+
+- `src/App.tsx`: layout principal da interface e interacoes
+- `src/hooks/use-chat-data.ts`: polling, selecao de sessao e envio
+- `src/lib/chat-api.ts`: contratos e chamadas HTTP
+
+## Endpoints Consumidos
+
+- `GET /manager/sessions/`
+- `GET /manager/messages/`
+- `POST /manager/messages/`
 
 ## Ambiente
 
-Defina a URL base da API no arquivo `.env` do frontend:
+Copie `.env.example` para `.env`.
 
 ```env
 VITE_API_BASE_URL=http://SEU_IP_OU_DOMINIO:8000
 ```
 
-Arquivo de exemplo:
-
-- `.env.example`
-
-## Execução local
+## Execucao Local
 
 ```bash
+cd acom_preview
 npm install
 npm run dev
 ```
 
-## Execução com Docker Compose
+Aplicacao: `http://localhost:5173`
 
-Dentro da pasta `acom_preview`:
+## Execucao com Docker
 
 ```bash
+cd acom_preview
 docker compose up --build
 ```
+
+## Scripts
+
+- `npm run dev`: servidor de desenvolvimento
+- `npm run build`: build de producao
+- `npm run preview`: preview do build
+- `npm run lint`: lint com ESLint
+- `npm run typecheck`: checagem de tipos
+- `npm run format`: formatacao com Prettier

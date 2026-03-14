@@ -1,61 +1,80 @@
-# ACOM Project Monorepo
+# ACOM Project
 
-Este repositório utiliza uma stack única com frontend e backend integrados.
+Monorepo de um integrador de canais de mensagem, com backend de orquestracao e frontend de atendimento em formato de chat.
 
-## Estrutura
+## Visao Geral
 
-- `acom_preview/` -> frontend React + Vite
-- `backend/` -> backend Django + Celery + Redis + PostgreSQL
-- `backend/compose.yml` -> Docker Compose do backend
-- `acom_preview/compose.yml` -> Docker Compose do frontend
+O projeto centraliza mensagens de diferentes integracoes (Telegram, Slack e mock), processa no backend e disponibiliza uma interface unica para atendimento no frontend.
 
-## Executar backend
+## Tech Stack
 
-Dentro da pasta `backend`:
+### Backend
+
+- Python 3.13
+- Django + Django REST Framework
+- Celery + Celery Beat
+- Redis (cache/fila)
+- PostgreSQL (persistencia)
+- drf-spectacular (Swagger/Redoc)
+- Docker Compose
+
+### Frontend
+
+- React 19 + TypeScript
+- Vite
+- Tailwind CSS 4
+- Base UI + utilitarios (`clsx`, `tailwind-merge`, `lucide-react`)
+- Docker Compose
+
+## Arquitetura
+
+1. Integracoes recebem webhooks e normalizam mensagens.
+2. Orquestrador escreve eventos no Redis para manter alto throughput.
+3. Worker (Celery) drena fila do Redis para PostgreSQL periodicamente.
+4. Backend expoe endpoints de consulta e resposta para o painel.
+5. Frontend consulta sessoes/mensagens e envia respostas por um unico fluxo (`/manager/messages/`).
+
+Para detalhes de implementacao:
+
+- Backend: `backend/README.md`
+- Frontend: `acom_preview/README.md`
+
+## Estrutura do Repositorio
+
+- `backend/`: API, orquestrador, workers e integracoes
+- `acom_preview/`: aplicacao frontend de chat
+
+## Como Rodar
+
+Use dois terminais.
+
+### 1) Backend
 
 ```bash
 cd backend
 docker compose up --build
 ```
 
-## Executar frontend
-
-Dentro da pasta `acom_preview`:
+### 2) Frontend
 
 ```bash
 cd acom_preview
 docker compose up --build
 ```
 
-## Executar ambos em paralelo
+## Endpoints Locais
 
-Use dois terminais, um para backend e outro para frontend.
+- Frontend: `http://localhost:5173`
+- API: `http://localhost:8000`
+- Swagger: `http://localhost:8000/api/swagger/`
+- Redoc: `http://localhost:8000/api/redoc/`
 
-Serviços:
+## Variaveis de Ambiente
 
-- Frontend: http://localhost:5173
-- API Backend: http://localhost:8000
-- Swagger: http://localhost:8000/api/swagger/
-- Redoc: http://localhost:8000/api/redoc/
+- Backend: copie `backend/.env.example` para `backend/.env`
+- Frontend: copie `acom_preview/.env.example` para `acom_preview/.env`
 
-## Ambiente
+Minimo esperado:
 
-O arquivo de ambiente do backend é carregado de `backend/.env`.
-O arquivo de ambiente do frontend é carregado de `acom_preview/.env`.
-
-Defina pelo menos:
-
-- `PG_NAME`
-- `PG_USER`
-- `PG_PASSWORD`
-- `PG_HOST=db`
-- `PG_PORT=5432`
-- `REDIS_HOST=redis`
-- `REDIS_PORT=6379`
-- `CORS_ALLOWED_ORIGINS=http://localhost:5173`
-- `VITE_API_BASE_URL=http://SEU_IP_OU_DOMINIO:8000`
-
-## Observações
-
-- O frontend é servido em produção a partir do build estático.
-- O endpoint da API no frontend é definido por `VITE_API_BASE_URL` em `acom_preview/.env`.
+- Backend: `PG_*`, `REDIS_*`, `CORS_ALLOWED_ORIGINS`
+- Frontend: `VITE_API_BASE_URL`
