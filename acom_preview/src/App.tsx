@@ -326,10 +326,10 @@ export function App() {
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h1 className="text-lg font-semibold text-slate-900">
-                ACOM exemplo chat
+                Sistema de Chats ACOM (Telegram, Slack e REST)
               </h1>
-              <p className="text-xs text-slate-600">
-                Conversas unificadas do telegram, slack, mock e integracao REST.
+              <p className="mt-1 text-xs font-medium text-blue-700">
+                Mande uma mensagem para o bot no Telegram para testar.
               </p>
               <a
                 href="https://t.me/Acomtest_bot"
@@ -337,7 +337,7 @@ export function App() {
                 rel="noreferrer"
                 className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-100"
               >
-                Testar redirecionamento no bot
+                Abrir bot no Telegram para testar
                 <ExternalLink className="size-3.5" />
               </a>
             </div>
@@ -361,6 +361,7 @@ export function App() {
                   variant="outline"
                   size="sm"
                   onClick={() => void refresh()}
+                  className="h-10 border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
                 >
                   <RefreshCw className="size-4" />
                 </Button>
@@ -512,8 +513,8 @@ export function App() {
               <div className="mt-1.5 flex items-center gap-2 text-xs text-slate-500">
                 <MessageCircle className="size-3.5" />
                 <span>
-                  Modo colaborativo: qualquer id de usuario de plataforma nao
-                  vazio aparece como remetente da plataforma.
+                  Modo colaborativo: mensagens de outros usuarios tambem são
+                  exibidas aqui.
                 </span>
               </div>
             </div>
