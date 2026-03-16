@@ -161,9 +161,9 @@ CELERY_RESULT_SERIALIZER = "json"
 
 # CELERY BEAT SETTINGS
 CELERY_BEAT_SCHEDULE = {
-    "process-message-batch-every-5-seconds": {
+    "process-message-batch-every-3-seconds": {
         "task": "orchestrator.tasks.process_message_batch",
-        "schedule": 5.0,  # 5 sec delay
+        "schedule": 3.0,  # 3 sec delay
     },
     "delete-old-messages-daily": {
         "task": "orchestrator.tasks.delete_old_messages",

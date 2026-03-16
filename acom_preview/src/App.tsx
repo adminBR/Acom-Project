@@ -70,7 +70,7 @@ interface OptimisticMessage {
   platformUserId: string
   channelName: string
   channelUserId: string | null
-  status: "sending" | "failed"
+  status: "sending" | "sent" | "failed"
 }
 
 function SidebarItem({
@@ -137,7 +137,7 @@ function MessageBubble({ message }: { message: OrchestratorMessage }) {
         >
           <span>
             {isPlatformReply
-              ? `plataforma: ${message.ds_id_platform_user}`
+              ? `usuario: ${message.ds_id_platform_user}`
               : `integracao: ${message.ds_channel_name}`}
           </span>
           <span>{formatAbsolute(message.dt_timestamp)}</span>
@@ -175,7 +175,11 @@ function OptimisticBubble({ message }: { message: OptimisticMessage }) {
             <AlertCircle className="size-3.5" />
           ) : null}
           <span>
-            {message.status === "failed" ? "falha no envio" : "enviando"}
+            {message.status === "failed"
+              ? "falha no envio"
+              : message.status === "sent"
+                ? "enviado"
+                : "enviando"}
           </span>
           <span>{formatAbsolute(message.createdAt)}</span>
         </div>
@@ -509,6 +513,11 @@ export function App() {
 
     try {
       await postMessage(text)
+      setOptimisticMessages((current) =>
+        current.map((item) =>
+          item.tempId === tempId ? { ...item, status: "sent" } : item
+        )
+      )
     } catch {
       setDraft(text)
       setOptimisticMessages((current) =>

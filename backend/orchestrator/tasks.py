@@ -109,7 +109,7 @@ def send_user_messages(
 ):
     message_to_send = message
     if attendant_id:
-        message_to_send = f"*{attendant_id}*\n{message}"
+        message_to_send = f"**{attendant_id}**\n{message}"
 
     if channel_name == "telegram":
         send_telegram_message(channel_user_id=channel_user_id, text=message_to_send)
