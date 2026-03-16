@@ -16,4 +16,6 @@ def send_telegram_message(channel_user_id, text):
     bot = Bot(token=TELEGRAM_TOKEN)
     import asyncio
 
-    asyncio.run(bot.send_message(chat_id=channel_user_id, text=text))
+    asyncio.run(
+        bot.send_message(chat_id=channel_user_id, text=text, parse_mode="MarkdownV2")
+    )
