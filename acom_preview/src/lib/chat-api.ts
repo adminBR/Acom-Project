@@ -46,9 +46,10 @@ export function getApiBaseUrl() {
 }
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+  const hasBody = options?.body !== undefined
   const response = await fetch(url, {
     headers: {
-      "Content-Type": "application/json",
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...(options?.headers || {}),
     },
     ...options,

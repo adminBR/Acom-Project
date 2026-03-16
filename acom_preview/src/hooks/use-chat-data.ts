@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import {
   fetchMessages,
@@ -8,7 +8,8 @@ import {
   type OrchestratorMessage,
 } from "@/lib/chat-api"
 
-const POLL_MS = 4000
+const SESSION_POLL_MS = 7000
+const MESSAGE_POLL_MS = 3000
 
 interface RequestMetric {
   lastRunAt: string | null
@@ -48,6 +49,9 @@ export function useChatData(platformUserId: string) {
   const [messagesMetric, setMessagesMetric] =
     useState<RequestMetric>(initialMetric())
   const [sendMetric, setSendMetric] = useState<RequestMetric>(initialMetric())
+  const sessionsRequestIdRef = useRef(0)
+  const messagesRequestIdRef = useRef(0)
+  const activeMessagesKeyRef = useRef<string | null>(null)
 
   const selectedSession = useMemo(
     () =>
@@ -56,12 +60,34 @@ export function useChatData(platformUserId: string) {
     [sessions, selectedSessionKey]
   )
 
+  const selectedMessageFilters = useMemo(() => {
+    if (!selectedSession) {
+      return null
+    }
+
+    return {
+      key: sessionKey(selectedSession),
+      sessionId: selectedSession.cd_session,
+      clientId: selectedSession.ds_id_channel_user || undefined,
+      channelName: selectedSession.ds_channel_name,
+    }
+  }, [
+    selectedSession?.cd_session,
+    selectedSession?.ds_channel_name,
+    selectedSession?.ds_id_channel_user,
+  ])
+
   const loadSessions = useCallback(async () => {
+    const requestId = ++sessionsRequestIdRef.current
     const startedAt = performance.now()
     setIsLoadingSessions(true)
     try {
       const response = await fetchSessions()
       const latencyMs = Math.round(performance.now() - startedAt)
+      if (requestId !== sessionsRequestIdRef.current) {
+        return
+      }
+
       setSessions(response.results)
       setError(null)
       setSessionsMetric({
@@ -85,6 +111,10 @@ export function useChatData(platformUserId: string) {
       }
     } catch (requestError) {
       const latencyMs = Math.round(performance.now() - startedAt)
+      if (requestId !== sessionsRequestIdRef.current) {
+        return
+      }
+
       setError(
         requestError instanceof Error
           ? requestError.message
@@ -96,65 +126,91 @@ export function useChatData(platformUserId: string) {
         ok: false,
       })
     } finally {
-      setIsLoadingSessions(false)
+      if (requestId === sessionsRequestIdRef.current) {
+        setIsLoadingSessions(false)
+      }
     }
   }, [selectedSessionKey])
 
-  const loadMessages = useCallback(async () => {
-    if (!selectedSession) {
-      setMessages([])
-      return
-    }
+  const loadMessages = useCallback(
+    async (force = false) => {
+      if (!selectedMessageFilters) {
+        activeMessagesKeyRef.current = null
+        setMessages([])
+        setIsLoadingMessages(false)
+        return
+      }
 
-    setIsLoadingMessages(true)
-    const startedAt = performance.now()
-    try {
-      const response = await fetchMessages({
-        sessionId: selectedSession.cd_session,
-        clientId: selectedSession.ds_id_channel_user || undefined,
-        channelName: selectedSession.ds_channel_name,
-      })
-      const latencyMs = Math.round(performance.now() - startedAt)
+      if (
+        !force &&
+        activeMessagesKeyRef.current === selectedMessageFilters.key &&
+        messagesRequestIdRef.current > 0
+      ) {
+        return
+      }
 
-      const sorted = [...response.results].sort((a, b) => {
-        const byDate =
-          new Date(a.dt_timestamp).getTime() -
-          new Date(b.dt_timestamp).getTime()
-        if (byDate !== 0) {
-          return byDate
+      activeMessagesKeyRef.current = selectedMessageFilters.key
+      const requestId = ++messagesRequestIdRef.current
+      setIsLoadingMessages(true)
+      const startedAt = performance.now()
+      try {
+        const response = await fetchMessages({
+          sessionId: selectedMessageFilters.sessionId,
+          clientId: selectedMessageFilters.clientId,
+          channelName: selectedMessageFilters.channelName,
+        })
+        const latencyMs = Math.round(performance.now() - startedAt)
+        if (requestId !== messagesRequestIdRef.current) {
+          return
         }
-        return a.cd_id - b.cd_id
-      })
 
-      setMessages(sorted)
-      setError(null)
-      setMessagesMetric({
-        lastRunAt: new Date().toISOString(),
-        latencyMs,
-        ok: true,
-      })
-    } catch (requestError) {
-      const latencyMs = Math.round(performance.now() - startedAt)
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Falha ao carregar mensagens"
-      )
-      setMessagesMetric({
-        lastRunAt: new Date().toISOString(),
-        latencyMs,
-        ok: false,
-      })
-    } finally {
-      setIsLoadingMessages(false)
-    }
-  }, [selectedSession])
+        const sorted = [...response.results].sort((a, b) => {
+          const byDate =
+            new Date(a.dt_timestamp).getTime() -
+            new Date(b.dt_timestamp).getTime()
+          if (byDate !== 0) {
+            return byDate
+          }
+          return a.cd_id - b.cd_id
+        })
+
+        setMessages(sorted)
+        setError(null)
+        setMessagesMetric({
+          lastRunAt: new Date().toISOString(),
+          latencyMs,
+          ok: true,
+        })
+      } catch (requestError) {
+        const latencyMs = Math.round(performance.now() - startedAt)
+        if (requestId !== messagesRequestIdRef.current) {
+          return
+        }
+
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Falha ao carregar mensagens"
+        )
+        setMessagesMetric({
+          lastRunAt: new Date().toISOString(),
+          latencyMs,
+          ok: false,
+        })
+      } finally {
+        if (requestId === messagesRequestIdRef.current) {
+          setIsLoadingMessages(false)
+        }
+      }
+    },
+    [selectedMessageFilters]
+  )
 
   useEffect(() => {
     void loadSessions()
     const interval = window.setInterval(() => {
       void loadSessions()
-    }, POLL_MS)
+    }, SESSION_POLL_MS)
 
     return () => {
       window.clearInterval(interval)
@@ -162,32 +218,35 @@ export function useChatData(platformUserId: string) {
   }, [loadSessions])
 
   useEffect(() => {
-    void loadMessages()
-  }, [loadMessages])
+    activeMessagesKeyRef.current = null
+    void loadMessages(true)
+  }, [selectedMessageFilters?.key, loadMessages])
 
   useEffect(() => {
-    if (!selectedSession) {
+    if (!selectedMessageFilters) {
       return
     }
 
     const interval = window.setInterval(() => {
-      void loadMessages()
-    }, POLL_MS)
+      activeMessagesKeyRef.current = null
+      void loadMessages(true)
+    }, MESSAGE_POLL_MS)
 
     return () => {
       window.clearInterval(interval)
     }
-  }, [selectedSession, loadMessages])
+  }, [selectedMessageFilters?.key, loadMessages])
 
   const selectSession = useCallback((session: ChatSessionItem) => {
     setMessages([])
     setIsLoadingMessages(true)
+    activeMessagesKeyRef.current = null
     setSelectedSessionKey(sessionKey(session))
   }, [])
 
   const refresh = useCallback(async () => {
-    await loadSessions()
-    await loadMessages()
+    activeMessagesKeyRef.current = null
+    await Promise.all([loadSessions(), loadMessages(true)])
   }, [loadMessages, loadSessions])
 
   const postMessage = useCallback(
@@ -249,7 +308,10 @@ export function useChatData(platformUserId: string) {
     postMessage,
     refresh,
     setError,
-    pollMs: POLL_MS,
+    pollMs: {
+      sessions: SESSION_POLL_MS,
+      messages: MESSAGE_POLL_MS,
+    },
     metrics: {
       sessions: sessionsMetric,
       messages: messagesMetric,

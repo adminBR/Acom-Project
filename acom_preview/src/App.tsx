@@ -16,6 +16,9 @@ import {
   type OrchestratorMessage,
 } from "@/lib/chat-api"
 
+const DEFAULT_ATTENDANT_ID = "attendant-001"
+const ATTENDANT_STORAGE_KEY = "acom.attendant-id"
+
 function formatAbsolute(iso: string) {
   return new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "short",
@@ -185,12 +188,155 @@ function compactStatusLabel(ok: boolean) {
   return ok ? "OK" : "FALHA"
 }
 
+function statusTone(ok: boolean) {
+  return ok
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : "border-amber-200 bg-amber-50 text-amber-700"
+}
+
+function TelemetryPanel({
+  metrics,
+  pollMs,
+  apiBaseUrl,
+}: {
+  metrics: {
+    sessions: { ok: boolean; latencyMs: number | null }
+    messages: { ok: boolean; latencyMs: number | null }
+    send: { ok: boolean; latencyMs: number | null }
+  }
+  pollMs: {
+    sessions: number
+    messages: number
+  }
+  apiBaseUrl: string
+}) {
+  const compactValues = [
+    {
+      key: "sessions",
+      value: `${metrics.sessions.latencyMs ?? "-"} ms`,
+      tone: statusTone(metrics.sessions.ok),
+    },
+    {
+      key: "messages",
+      value: `${metrics.messages.latencyMs ?? "-"} ms`,
+      tone: statusTone(metrics.messages.ok),
+    },
+    {
+      key: "send",
+      value: `${metrics.send.latencyMs ?? "-"} ms`,
+      tone: statusTone(metrics.send.ok),
+    },
+    {
+      key: "chat-poll",
+      value: `${pollMs.messages / 1000}s`,
+      tone: "border-sky-200 bg-sky-50 text-sky-700",
+    },
+  ]
+
+  const detailItems = [
+    {
+      label: "Sessoes",
+      value: `${metrics.sessions.latencyMs ?? "-"} ms`,
+      meta: compactStatusLabel(metrics.sessions.ok),
+      tone: statusTone(metrics.sessions.ok),
+    },
+    {
+      label: "Mensagens",
+      value: `${metrics.messages.latencyMs ?? "-"} ms`,
+      meta: compactStatusLabel(metrics.messages.ok),
+      tone: statusTone(metrics.messages.ok),
+    },
+    {
+      label: "Envio",
+      value: `${metrics.send.latencyMs ?? "-"} ms`,
+      meta: compactStatusLabel(metrics.send.ok),
+      tone: statusTone(metrics.send.ok),
+    },
+    {
+      label: "Polling chats",
+      value: `${pollMs.sessions / 1000}s`,
+      meta: "lista",
+      tone: "border-blue-200 bg-blue-50 text-blue-700",
+    },
+    {
+      label: "Polling chat",
+      value: `${pollMs.messages / 1000}s`,
+      meta: "aberto",
+      tone: "border-sky-200 bg-sky-50 text-sky-700",
+    },
+  ]
+
+  return (
+    <div className="group relative">
+      <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/85 p-2 shadow-sm backdrop-blur-md transition-all duration-200 hover:border-blue-200 hover:bg-white">
+        <div className="grid grid-cols-2 gap-1">
+          {compactValues.map((item) => (
+            <span
+              key={item.key}
+              className={`rounded-lg border px-2 py-1 text-[11px] leading-none font-semibold whitespace-nowrap ${item.tone}`}
+            >
+              {item.value}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div aria-hidden="true" className="absolute inset-x-0 top-full h-3" />
+
+      <div className="pointer-events-none invisible absolute top-full right-0 z-30 mt-1 w-72 translate-y-2 rounded-2xl border border-white/50 bg-white/88 p-3 opacity-0 shadow-xl shadow-slate-900/10 backdrop-blur-xl transition-all duration-200 group-hover:pointer-events-auto group-hover:visible group-hover:translate-y-0 group-hover:opacity-100">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="mt-1 text-sm font-semibold text-slate-900">
+              Telemetria
+            </h3>
+          </div>
+        </div>
+
+        <div className="mt-3 space-y-1.5">
+          {detailItems.map((item) => (
+            <div
+              key={item.label}
+              className="flex items-center justify-between rounded-xl border border-slate-200 bg-white/70 px-2.5 py-2"
+            >
+              <div>
+                <p className="text-[11px] font-semibold text-slate-800">
+                  {item.label}
+                </p>
+                <p className="text-[10px] text-slate-500">{item.meta}</p>
+              </div>
+              <span
+                className={`rounded-lg border px-2 py-1 text-[11px] font-semibold ${item.tone}`}
+              >
+                {item.value}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/80 px-2.5 py-2">
+          <p className="text-[10px] font-medium tracking-wide text-slate-500 uppercase">
+            API
+          </p>
+          <p className="mt-1 truncate text-[11px] text-slate-700">
+            {apiBaseUrl}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function App() {
-  const [platformUserId, setPlatformUserId] = useState("attendant-001")
+  const [platformUserId, setPlatformUserId] = useState(DEFAULT_ATTENDANT_ID)
+  const [isIdentityReady, setIsIdentityReady] = useState(false)
+  const [showIdentityModal, setShowIdentityModal] = useState(false)
+  const [identityDraft, setIdentityDraft] = useState("")
+  const [identityError, setIdentityError] = useState<string | null>(null)
   const [draft, setDraft] = useState("")
   const [optimisticMessages, setOptimisticMessages] = useState<
     OptimisticMessage[]
   >([])
+  const identityInputRef = useRef<HTMLInputElement | null>(null)
   const {
     sessions,
     selectedSession,
@@ -207,6 +353,28 @@ export function App() {
     metrics,
   } = useChatData(platformUserId)
 
+  useEffect(() => {
+    const storedId = window.localStorage.getItem(ATTENDANT_STORAGE_KEY)?.trim()
+    if (storedId && storedId !== DEFAULT_ATTENDANT_ID) {
+      setPlatformUserId(storedId)
+      setIdentityDraft(storedId)
+      setShowIdentityModal(false)
+    } else {
+      setPlatformUserId(DEFAULT_ATTENDANT_ID)
+      setIdentityDraft("")
+      setShowIdentityModal(true)
+    }
+    setIsIdentityReady(true)
+  }, [])
+
+  useEffect(() => {
+    if (!showIdentityModal) {
+      return
+    }
+
+    identityInputRef.current?.focus()
+  }, [showIdentityModal])
+
   const selectedKey = useMemo(() => {
     if (!selectedSession) {
       return null
@@ -215,12 +383,21 @@ export function App() {
   }, [selectedSession])
 
   const listRef = useRef<HTMLDivElement | null>(null)
-  useEffect(() => {
+  const shouldStickToBottomRef = useRef(true)
+  const previousMessageCountRef = useRef(0)
+  const previousSelectedKeyRef = useRef<string | null>(null)
+
+  const handleListScroll = () => {
     if (!listRef.current) {
       return
     }
-    listRef.current.scrollTop = listRef.current.scrollHeight
-  }, [messages, optimisticMessages, selectedKey])
+
+    const distanceFromBottom =
+      listRef.current.scrollHeight -
+      listRef.current.scrollTop -
+      listRef.current.clientHeight
+    shouldStickToBottomRef.current = distanceFromBottom < 80
+  }
 
   const visibleOptimisticMessages = useMemo(() => {
     if (!selectedKey) {
@@ -250,6 +427,26 @@ export function App() {
     })
   }, [optimisticMessages, selectedKey, messages])
 
+  useEffect(() => {
+    if (!listRef.current) {
+      return
+    }
+
+    const totalMessages = messages.length + visibleOptimisticMessages.length
+    const selectedChatChanged = previousSelectedKeyRef.current !== selectedKey
+    const messagesIncreased = totalMessages > previousMessageCountRef.current
+
+    if (
+      selectedChatChanged ||
+      (messagesIncreased && shouldStickToBottomRef.current)
+    ) {
+      listRef.current.scrollTop = listRef.current.scrollHeight
+    }
+
+    previousSelectedKeyRef.current = selectedKey
+    previousMessageCountRef.current = totalMessages
+  }, [messages.length, selectedKey, visibleOptimisticMessages.length])
+
   const canSend = Boolean(
     draft.trim() && selectedSession && platformUserId.trim()
   )
@@ -259,6 +456,33 @@ export function App() {
     isLoadingMessages &&
     messages.length === 0 &&
     visibleOptimisticMessages.length === 0
+
+  const persistPlatformUserId = (value: string) => {
+    const trimmedValue = value.trim()
+    setPlatformUserId(trimmedValue || DEFAULT_ATTENDANT_ID)
+    if (trimmedValue) {
+      window.localStorage.setItem(ATTENDANT_STORAGE_KEY, trimmedValue)
+    } else {
+      window.localStorage.removeItem(ATTENDANT_STORAGE_KEY)
+    }
+  }
+
+  const onIdentitySubmit = () => {
+    const trimmedIdentity = identityDraft.trim()
+    if (!trimmedIdentity) {
+      setIdentityError("Informe o nome ou id do atendente.")
+      return
+    }
+
+    if (trimmedIdentity === DEFAULT_ATTENDANT_ID) {
+      setIdentityError("Escolha um identificador diferente de attendant-001.")
+      return
+    }
+
+    persistPlatformUserId(trimmedIdentity)
+    setIdentityError(null)
+    setShowIdentityModal(false)
+  }
 
   const onSend = async () => {
     if (!canSend) {
@@ -295,33 +519,12 @@ export function App() {
     }
   }
 
+  const apiBaseUrl = getApiBaseUrl()
+
   return (
     <div className="relative min-h-svh overflow-hidden bg-slate-50 text-slate-900">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(59,130,246,0.15),transparent_35%),radial-gradient(circle_at_85%_20%,rgba(239,68,68,0.12),transparent_40%),linear-gradient(180deg,#f8fbff_0%,#f6f8fc_55%,#fefcff_100%)]" />
       <div className="relative z-10 mx-auto flex h-svh max-w-7xl flex-col gap-2 p-2 md:p-3">
-        <section className="rounded-xl border border-slate-200 bg-white/90 px-2 py-1.5 shadow-sm backdrop-blur">
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-700">
-            <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-medium">
-              SESSOES {compactStatusLabel(metrics.sessions.ok)} |{" "}
-              {metrics.sessions.latencyMs ?? "-"} ms
-            </span>
-            <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-medium">
-              MSGS {compactStatusLabel(metrics.messages.ok)} |{" "}
-              {metrics.messages.latencyMs ?? "-"} ms
-            </span>
-            <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-medium">
-              ENVIO {compactStatusLabel(metrics.send.ok)} |{" "}
-              {metrics.send.latencyMs ?? "-"} ms
-            </span>
-            <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 font-medium text-blue-700">
-              POLLING {pollMs / 1000}s
-            </span>
-            <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-medium">
-              EXIBIDAS {messages.length + visibleOptimisticMessages.length}
-            </span>
-          </div>
-        </section>
-
         <header className="rounded-2xl border border-blue-100 bg-white/90 px-3 py-2 shadow-sm backdrop-blur">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
@@ -341,7 +544,7 @@ export function App() {
                 <ExternalLink className="size-3.5" />
               </a>
             </div>
-            <div className="flex w-full flex-col gap-1.5 md:w-auto md:min-w-90">
+            <div className="flex w-full flex-col gap-1.5 md:w-80">
               <label
                 htmlFor="platform-id"
                 className="text-xs font-medium tracking-wide text-slate-500 uppercase"
@@ -352,7 +555,16 @@ export function App() {
                 <input
                   id="platform-id"
                   value={platformUserId}
-                  onChange={(event) => setPlatformUserId(event.target.value)}
+                  onChange={(event) => {
+                    const nextValue = event.target.value
+                    setPlatformUserId(nextValue || DEFAULT_ATTENDANT_ID)
+                    if (error) {
+                      setError(null)
+                    }
+                  }}
+                  onBlur={(event) => {
+                    persistPlatformUserId(event.target.value)
+                  }}
                   className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm transition outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                   placeholder="atendente-001"
                 />
@@ -421,13 +633,16 @@ export function App() {
                     : "Escolha um chat na esquerda para responder"}
                 </p>
               </div>
-              <div className="text-xs text-slate-500">
-                API: {getApiBaseUrl()}
-              </div>
+              <TelemetryPanel
+                metrics={metrics}
+                pollMs={pollMs}
+                apiBaseUrl={apiBaseUrl}
+              />
             </div>
 
             <div
               ref={listRef}
+              onScroll={handleListScroll}
               className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_60%,#fdf7f7_100%)] px-2.5 py-2.5 md:px-3"
             >
               {showChatLoading ? (
@@ -521,6 +736,59 @@ export function App() {
           </section>
         </main>
       </div>
+      {isIdentityReady && showIdentityModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-md">
+          <div className="w-full max-w-md rounded-3xl border border-white/40 bg-white/72 p-6 shadow-2xl shadow-slate-900/20 backdrop-blur-xl">
+            <p className="text-xs font-semibold tracking-[0.24em] text-blue-700 uppercase">
+              Identificacao
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-900">
+              Escolha seu nome de atendente
+            </h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Esse nome sera usado nas mensagens enviadas e salvo neste
+              navegador.
+            </p>
+            <div className="mt-5 space-y-2">
+              <label
+                htmlFor="identity-modal-input"
+                className="text-xs font-medium tracking-wide text-slate-500 uppercase"
+              >
+                Nome ou id do atendente
+              </label>
+              <input
+                ref={identityInputRef}
+                id="identity-modal-input"
+                value={identityDraft}
+                onChange={(event) => {
+                  setIdentityDraft(event.target.value)
+                  if (identityError) {
+                    setIdentityError(null)
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault()
+                    onIdentitySubmit()
+                  }
+                }}
+                className="h-12 w-full rounded-xl border border-white/60 bg-white/80 px-4 text-sm text-slate-900 transition outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                placeholder="ex.: maria.silva"
+              />
+              {identityError ? (
+                <p className="text-sm text-red-600">{identityError}</p>
+              ) : null}
+            </div>
+            <Button
+              type="button"
+              onClick={onIdentitySubmit}
+              className="mt-6 h-11 w-full bg-blue-600 text-white hover:bg-blue-700"
+            >
+              Entrar no painel
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
