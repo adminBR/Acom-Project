@@ -164,7 +164,7 @@ function OptimisticBubble({ message }: { message: OptimisticMessage }) {
             message.status === "failed" ? "text-red-700" : "text-blue-100",
           ].join(" ")}
         >
-          <span>plataforma: {message.platformUserId}</span>
+          <span>Usuario: {message.platformUserId}</span>
           {message.status === "sending" ? (
             <LoaderCircle className="size-3.5 animate-spin" />
           ) : null}

@@ -81,6 +81,7 @@ def process_message_batch():
                     msg_data.get("channel_name"),
                     msg_data.get("id_channel"),
                     msg_data.get("text"),
+                    msg_data.get("id_user"),
                 )
             else:
                 check_and_reply_common_messages(
@@ -104,11 +105,16 @@ def send_user_messages(
     channel_name: str,
     channel_user_id: str,
     message: str,
+    attendant_id: str | None = None,
 ):
+    message_to_send = message
+    if attendant_id:
+        message_to_send = f"*{attendant_id}*\n{message}"
+
     if channel_name == "telegram":
-        send_telegram_message(channel_user_id=channel_user_id, text=message)
+        send_telegram_message(channel_user_id=channel_user_id, text=message_to_send)
     if channel_name == "slack":
-        send_slack_message(channel_user_id=channel_user_id, text=message)
+        send_slack_message(channel_user_id=channel_user_id, text=message_to_send)
 
 
 def check_and_reply_common_messages(
